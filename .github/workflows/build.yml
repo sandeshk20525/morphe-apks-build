@@ -20,8 +20,22 @@ jobs:
       - name: Download Morphe Tools
         run: |
           mkdir -p tools
-          wget -qO tools/cli.jar https://github.com/MorpheApp/morphe-cli/releases/latest/download/morphe-cli.jar
-          wget -qO tools/patches.jar https://github.com/MorpheApp/morphe-patches/releases/latest/download/morphe-patches.jar
+          
+          # GitHub API se automatically latest CLI ka link fetch karna
+          echo "Fetching latest Morphe CLI..."
+          CLI_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-cli/releases/latest | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
+          echo "Downloading CLI from: $CLI_URL"
+          wget -qO tools/cli.jar "$CLI_URL"
+          
+          # GitHub API se automatically latest Patches ka link fetch karna (supports .jar, .mpp, .rvp)
+          echo "Fetching latest Morphe Patches..."
+          PATCHES_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep "browser_download_url" | grep -E "\.jar|\.rvp|\.mpp" | cut -d '"' -f 4 | head -n 1)
+          PATCH_EXT="${PATCHES_URL##*.}"
+          echo "Downloading Patches from: $PATCHES_URL"
+          wget -qO "tools/patches.$PATCH_EXT" "$PATCHES_URL"
+          
+          # Check karna ki files theek se download hui hain ya nahi
+          if [ ! -s tools/cli.jar ]; then echo "CLI download failed!"; exit 1; fi
 
       - name: Download Original APKs
         run: |
@@ -51,13 +65,14 @@ jobs:
 
       - name: Build Non-Root APKs (Standard)
         run: |
-          java -jar tools/cli.jar patch -p tools/patches.jar -o YouTube-Morphe-NonRoot.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.jar -o YTMusic-Morphe-NonRoot.apk apks/ytmusic.apk
+          # '*' ka use kiya hai taaki extension (.jar ya .mpp) khud pakad le
+          java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-Morphe-NonRoot.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-Morphe-NonRoot.apk apks/ytmusic.apk
 
       - name: Build Root APKs (For Magisk)
         run: |
-          java -jar tools/cli.jar patch -p tools/patches.jar -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.jar -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
 
       - name: Create Magisk Modules
         run: |
