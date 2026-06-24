@@ -22,7 +22,6 @@ jobs:
           mkdir -p tools
           wget -qO tools/cli.jar https://github.com/MorpheApp/morphe-cli/releases/latest/download/morphe-cli.jar
           wget -qO tools/patches.jar https://github.com/MorpheApp/morphe-patches/releases/latest/download/morphe-patches.jar
-          wget -qO tools/integrations.apk https://github.com/MorpheApp/morphe-integrations/releases/latest/download/morphe-integrations.apk
 
       - name: Download Original APKs
         run: |
@@ -52,13 +51,13 @@ jobs:
 
       - name: Build Non-Root APKs (Standard)
         run: |
-          java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -o YouTube-Morphe-NonRoot.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -o YTMusic-Morphe-NonRoot.apk apks/ytmusic.apk
+          java -jar tools/cli.jar patch -p tools/patches.jar -o YouTube-Morphe-NonRoot.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.jar -o YTMusic-Morphe-NonRoot.apk apks/ytmusic.apk
 
       - name: Build Root APKs (For Magisk)
         run: |
-          java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
+          java -jar tools/cli.jar patch -p tools/patches.jar -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.jar -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
 
       - name: Create Magisk Modules
         run: |
