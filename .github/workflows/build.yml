@@ -9,10 +9,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Java JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'zulu'
@@ -20,7 +20,6 @@ jobs:
       - name: Download Morphe Tools
         run: |
           mkdir -p tools
-          # Morphe releases se latest links update karein
           wget -qO tools/cli.jar https://github.com/MorpheApp/morphe-cli/releases/latest/download/morphe-cli.jar
           wget -qO tools/patches.jar https://github.com/MorpheApp/morphe-patches/releases/latest/download/morphe-patches.jar
           wget -qO tools/integrations.apk https://github.com/MorpheApp/morphe-integrations/releases/latest/download/morphe-integrations.apk
@@ -28,34 +27,45 @@ jobs:
       - name: Download Original APKs
         run: |
           mkdir -p apks
-          # Yaha aapko original APKs ke direct download links dene honge.
-          # Example (Aapko in links ko actual direct links se replace karna hoga):
-          # wget -qO apks/youtube.apk "DIRECT_YOUTUBE_APK_LINK"
-          # wget -qO apks/ytmusic.apk "DIRECT_YTMUSIC_APK_LINK"
-          # wget -qO apks/reddit.apk "DIRECT_REDDIT_APK_LINK"
-          echo "Please ensure you have valid direct links for original APKs in the workflow file."
+          
+          # 1. Auto-fetch YouTube APK from Archive.org
+          echo "Scanning for YouTube APK..."
+          YT_BASE="https://archive.org/download/jhc-apks/apks/com.google.android.youtube/"
+          YT_APK=$(curl -s "$YT_BASE" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1)
+          echo "Downloading $YT_APK"
+          wget -O apks/youtube.apk "${YT_BASE}${YT_APK}"
+          
+          # 2. Auto-fetch YT Music APK from Archive.org
+          echo "Scanning for YT Music APK..."
+          YTM_BASE="https://archive.org/download/jhc-apks/apks/com.google.android.apps.youtube.music/"
+          YTM_APK=$(curl -s "$YTM_BASE" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1)
+          echo "Downloading $YTM_APK"
+          wget -O apks/ytmusic.apk "${YTM_BASE}${YTM_APK}"
+          
+      - name: Verify APK Downloads
+        run: |
+          echo "Checking downloaded APK sizes..."
+          ls -lh apks/
+          # Ye check karega ki file theek se download hui hai ya nahi (kam se kam 10MB ki honi chahiye)
+          if [ ! -s apks/youtube.apk ] || [ $(stat -c%s "apks/youtube.apk") -lt 10000000 ]; then echo "YouTube APK download failed or is invalid!"; exit 1; fi
+          if [ ! -s apks/ytmusic.apk ] || [ $(stat -c%s "apks/ytmusic.apk") -lt 10000000 ]; then echo "YT Music APK download failed or is invalid!"; exit 1; fi
 
       - name: Build Non-Root APKs (Standard)
         run: |
-          # Non-root devices ke liye standard patching (MicroG support ke sath)
           java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -o YouTube-Morphe-NonRoot.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -o YTMusic-Morphe-NonRoot.apk apks/ytmusic.apk
-          java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -o Reddit-Morphe-NonRoot.apk apks/reddit.apk
 
       - name: Build Root APKs (For Magisk)
         run: |
-          # Root variants ke liye 'GmsCore support' (MicroG) patch ko exclude (-e) karna zaruri hai
           java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.jar -i tools/integrations.apk -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
-          # Reddit ke liye root module ki zarurat nahi hoti, isliye usey skip kiya gaya hai.
 
       - name: Create Magisk Modules
         run: |
-          # Ek standard Magisk template download karein
           git clone https://github.com/LSPosed/magisk-module-template.git template
           rm -rf template/.git
 
-          # YouTube Magisk Module banayein
+          # YouTube Magisk Module
           cp -r template yt-magisk
           mkdir -p yt-magisk/system/product/app/YouTube
           cp YouTube-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
@@ -63,7 +73,7 @@ jobs:
           sed -i 's/name=Magisk Module Template/name=YouTube Morphe (Root)/g' yt-magisk/module.prop
           cd yt-magisk && zip -r9 ../YouTube-Morphe-Magisk.zip . && cd ..
 
-          # YT Music Magisk Module banayein
+          # YT Music Magisk Module
           cp -r template ytm-magisk
           mkdir -p ytm-magisk/system/product/app/YTMusic
           cp YTMusic-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
@@ -79,7 +89,6 @@ jobs:
           files: |
             YouTube-Morphe-NonRoot.apk
             YTMusic-Morphe-NonRoot.apk
-            Reddit-Morphe-NonRoot.apk
             YouTube-Morphe-Magisk.zip
             YTMusic-Morphe-Magisk.zip
         env:
