@@ -74,18 +74,22 @@ jobs:
           java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
 
-      - name: Create Magisk Modules
+      - name: Create Magisk Modules Native
         run: |
-          # LSPosed ki jagah ReVanced ka official template use kar rahe hain
-          git clone https://github.com/revanced/magisk-module-template.git template
-          rm -rf template/.git
-
-          # YouTube Magisk Module
-          cp -r template yt-magisk
-          mkdir -p yt-magisk/system/product/app/YouTube
-          cp YouTube-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
+          # BINA KISI GITHUB REPO KE MAGISK MODULE BANANA (100% FOOLPROOF)
           
-          # Naya module.prop generate karna (foolproof method)
+          # --- YouTube Magisk Module ---
+          mkdir -p yt-magisk/META-INF/com/google/android
+          mkdir -p yt-magisk/system/product/app/YouTube
+          
+          # Create Magisk Installer Script (Magisk isko dekhte hi khud install kar lega)
+          echo "#!/sbin/sh" > yt-magisk/META-INF/com/google/android/update-binary
+          echo "#MAGISK" >> yt-magisk/META-INF/com/google/android/update-binary
+          chmod +x yt-magisk/META-INF/com/google/android/update-binary
+          touch yt-magisk/META-INF/com/google/android/updater-script
+          
+          # Copy APK and Create module.prop
+          cp YouTube-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
           cat <<EOF > yt-magisk/module.prop
           id=morphe-youtube
           name=YouTube Morphe (Root)
@@ -97,12 +101,18 @@ jobs:
           
           cd yt-magisk && zip -r9 ../YouTube-Morphe-Magisk.zip . && cd ..
 
-          # YT Music Magisk Module
-          cp -r template ytm-magisk
+          # --- YT Music Magisk Module ---
+          mkdir -p ytm-magisk/META-INF/com/google/android
           mkdir -p ytm-magisk/system/product/app/YTMusic
-          cp YTMusic-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
           
-          # Naya module.prop generate karna (foolproof method)
+          # Create Magisk Installer Script
+          echo "#!/sbin/sh" > ytm-magisk/META-INF/com/google/android/update-binary
+          echo "#MAGISK" >> ytm-magisk/META-INF/com/google/android/update-binary
+          chmod +x ytm-magisk/META-INF/com/google/android/update-binary
+          touch ytm-magisk/META-INF/com/google/android/updater-script
+          
+          # Copy APK and Create module.prop
+          cp YTMusic-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
           cat <<EOF > ytm-magisk/module.prop
           id=morphe-ytmusic
           name=YT Music Morphe (Root)
