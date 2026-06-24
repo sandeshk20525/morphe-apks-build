@@ -76,23 +76,42 @@ jobs:
 
       - name: Create Magisk Modules
         run: |
-          git clone https://github.com/LSPosed/magisk-module-template.git template
+          # LSPosed ki jagah ReVanced ka official template use kar rahe hain
+          git clone https://github.com/revanced/magisk-module-template.git template
           rm -rf template/.git
 
           # YouTube Magisk Module
           cp -r template yt-magisk
           mkdir -p yt-magisk/system/product/app/YouTube
           cp YouTube-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
-          sed -i 's/id=template/id=morphe-youtube/g' yt-magisk/module.prop
-          sed -i 's/name=Magisk Module Template/name=YouTube Morphe (Root)/g' yt-magisk/module.prop
+          
+          # Naya module.prop generate karna (foolproof method)
+          cat <<EOF > yt-magisk/module.prop
+          id=morphe-youtube
+          name=YouTube Morphe (Root)
+          version=v1.0
+          versionCode=1
+          author=MorpheApp Builder
+          description=Systemless Morphe Patched YouTube module.
+          EOF
+          
           cd yt-magisk && zip -r9 ../YouTube-Morphe-Magisk.zip . && cd ..
 
           # YT Music Magisk Module
           cp -r template ytm-magisk
           mkdir -p ytm-magisk/system/product/app/YTMusic
           cp YTMusic-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
-          sed -i 's/id=template/id=morphe-ytmusic/g' ytm-magisk/module.prop
-          sed -i 's/name=Magisk Module Template/name=YT Music Morphe (Root)/g' ytm-magisk/module.prop
+          
+          # Naya module.prop generate karna (foolproof method)
+          cat <<EOF > ytm-magisk/module.prop
+          id=morphe-ytmusic
+          name=YT Music Morphe (Root)
+          version=v1.0
+          versionCode=1
+          author=MorpheApp Builder
+          description=Systemless Morphe Patched YouTube Music module.
+          EOF
+          
           cd ytm-magisk && zip -r9 ../YTMusic-Morphe-Magisk.zip . && cd ..
 
       - name: Create GitHub Release
