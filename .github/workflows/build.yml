@@ -62,17 +62,13 @@ jobs:
           echo "Downloading $YTM_APK"
           wget -qO apks/ytmusic.apk "https://archive.org/download/jhc-apks/$YTM_APK_PATH"
           
-          # 3. Auto-fetch Reddit APK (With Error Fallback)
+          # 3. Auto-fetch Reddit APK (Safe Mode)
           echo "Scanning for Reddit APK via API..."
           REDDIT_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep -i "com.reddit.frontpage" | grep "\.apk$" | sort | tail -n 1)
           
           if [ -z "$REDDIT_APK_PATH" ]; then 
-              echo "Reddit not found in primary archive! Using fallback..."
-              # Agar archive se reddit completely hat gaya ho, toh fail nahi hoga, backup use karega
-              REDDIT_APK="Reddit-Backup.apk"
-              # Dummy touch to avoid build fail, but normally this backup link will work if updated
-              touch apks/reddit.apk
-              echo "WARNING: Reddit APK missing from archive. Proceeding with dummy/blank to keep YouTube running."
+              echo "WARNING: Reddit APK missing from archive. Skipping Reddit."
+              REDDIT_APK="Not_Found"
           else
               REDDIT_APK=$(basename "$REDDIT_APK_PATH")
               echo "Downloading $REDDIT_APK"
@@ -90,13 +86,24 @@ jobs:
           ls -lh apks/
           if [ ! -s apks/youtube.apk ] || [ $(stat -c%s "apks/youtube.apk") -lt 10000000 ]; then echo "YouTube APK download failed or is invalid!"; exit 1; fi
           if [ ! -s apks/ytmusic.apk ] || [ $(stat -c%s "apks/ytmusic.apk") -lt 10000000 ]; then echo "YT Music APK download failed or is invalid!"; exit 1; fi
-          if [ ! -s apks/reddit.apk ] || [ $(stat -c%s "apks/reddit.apk") -lt 10000000 ]; then echo "Reddit APK download failed or is invalid!"; exit 1; fi
+          
+          # Reddit ki verification ko safe banaya gaya hai
+          if [ -f apks/reddit.apk ]; then
+            if [ ! -s apks/reddit.apk ] || [ $(stat -c%s "apks/reddit.apk") -lt 10000000 ]; then 
+              echo "Reddit APK is invalid! Removing it so build can continue safely."
+              rm apks/reddit.apk
+            fi
+          fi
 
       - name: Build Non-Root APKs (Standard)
         run: |
           java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-PitchBlack-NonRoot.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-PitchBlack-NonRoot.apk apks/ytmusic.apk
-          java -jar tools/cli.jar patch -p tools/patches.* -o Reddit-Morphe-NonRoot.apk apks/reddit.apk
+          
+          # Sirf tabhi patch karega jab Reddit APK safely download hua ho
+          if [ -f apks/reddit.apk ]; then
+            java -jar tools/cli.jar patch -p tools/patches.* -o Reddit-Morphe-NonRoot.apk apks/reddit.apk
+          fi
 
       - name: Build Root APKs (For Magisk)
         run: |
@@ -154,12 +161,18 @@ jobs:
           YTM_CLEAN_NAME=${YTM_APK_NAME%.apk}
           REDDIT_CLEAN_NAME=${REDDIT_APK_NAME%.apk}
           
+          if [ "$REDDIT_CLEAN_NAME" == "Not_Found" ]; then
+            REDDIT_TEXT="Skipped (Not available in archive)"
+          else
+            REDDIT_TEXT="$REDDIT_CLEAN_NAME"
+          fi
+          
           cat <<EOF > release_notes.txt
           🚀 **New Morphe Build**
           
           📱 **YouTube:** $YT_CLEAN_NAME
           🎵 **YouTube Music:** $YTM_CLEAN_NAME
-          🤖 **Reddit:** $REDDIT_CLEAN_NAME
+          🤖 **Reddit:** $REDDIT_TEXT
           
           ---
           
@@ -186,10 +199,7 @@ jobs:
           name: "Morphe Patched Builds (Pitch Black) #${{ github.run_number }}"
           body_path: release_notes.txt
           files: |
-            YouTube-PitchBlack-NonRoot.apk
-            YTMusic-PitchBlack-NonRoot.apk
-            Reddit-Morphe-NonRoot.apk
-            YouTube-PitchBlack-Magisk.zip
-            YTMusic-PitchBlack-Magisk.zip
+            *NonRoot.apk
+            *Magisk.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
