@@ -27,14 +27,13 @@ jobs:
           echo "Downloading CLI from: $CLI_URL"
           wget -qO tools/cli.jar "$CLI_URL"
           
-          # GitHub API se automatically latest Patches ka link fetch karna (supports .jar, .mpp, .rvp)
+          # GitHub API se automatically latest Patches ka link fetch karna
           echo "Fetching latest Morphe Patches..."
           PATCHES_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep "browser_download_url" | grep -E "\.jar|\.rvp|\.mpp" | cut -d '"' -f 4 | head -n 1)
           PATCH_EXT="${PATCHES_URL##*.}"
           echo "Downloading Patches from: $PATCHES_URL"
           wget -qO "tools/patches.$PATCH_EXT" "$PATCHES_URL"
           
-          # Check karna ki files theek se download hui hain ya nahi
           if [ ! -s tools/cli.jar ]; then echo "CLI download failed!"; exit 1; fi
 
       - name: Download Original APKs
@@ -59,80 +58,72 @@ jobs:
         run: |
           echo "Checking downloaded APK sizes..."
           ls -lh apks/
-          # Ye check karega ki file theek se download hui hai ya nahi (kam se kam 10MB ki honi chahiye)
           if [ ! -s apks/youtube.apk ] || [ $(stat -c%s "apks/youtube.apk") -lt 10000000 ]; then echo "YouTube APK download failed or is invalid!"; exit 1; fi
           if [ ! -s apks/ytmusic.apk ] || [ $(stat -c%s "apks/ytmusic.apk") -lt 10000000 ]; then echo "YT Music APK download failed or is invalid!"; exit 1; fi
 
       - name: Build Non-Root APKs (Standard)
         run: |
-          # '*' ka use kiya hai taaki extension (.jar ya .mpp) khud pakad le
-          java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-Morphe-NonRoot.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-Morphe-NonRoot.apk apks/ytmusic.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-PitchBlack-NonRoot.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-PitchBlack-NonRoot.apk apks/ytmusic.apk
 
       - name: Build Root APKs (For Magisk)
         run: |
-          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-PitchBlack-Root.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-PitchBlack-Root.apk apks/ytmusic.apk
 
       - name: Create Magisk Modules Native
         run: |
-          # BINA KISI GITHUB REPO KE MAGISK MODULE BANANA (100% FOOLPROOF)
-          
           # --- YouTube Magisk Module ---
           mkdir -p yt-magisk/META-INF/com/google/android
           mkdir -p yt-magisk/system/product/app/YouTube
           
-          # Create Magisk Installer Script (Magisk isko dekhte hi khud install kar lega)
           echo "#!/sbin/sh" > yt-magisk/META-INF/com/google/android/update-binary
           echo "#MAGISK" >> yt-magisk/META-INF/com/google/android/update-binary
           chmod +x yt-magisk/META-INF/com/google/android/update-binary
           touch yt-magisk/META-INF/com/google/android/updater-script
           
-          # Copy APK and Create module.prop
-          cp YouTube-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
+          cp YouTube-PitchBlack-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
           cat <<EOF > yt-magisk/module.prop
-          id=morphe-youtube
-          name=YouTube Morphe (Root)
+          id=morphe-youtube-black
+          name=YouTube Morphe (Pitch Black Root)
           version=v1.0
           versionCode=1
           author=MorpheApp Builder
-          description=Systemless Morphe Patched YouTube module.
+          description=Systemless Morphe Patched YouTube module with AMOLED Pitch Black theme.
           EOF
           
-          cd yt-magisk && zip -r9 ../YouTube-Morphe-Magisk.zip . && cd ..
+          cd yt-magisk && zip -r9 ../YouTube-PitchBlack-Magisk.zip . && cd ..
 
           # --- YT Music Magisk Module ---
           mkdir -p ytm-magisk/META-INF/com/google/android
           mkdir -p ytm-magisk/system/product/app/YTMusic
           
-          # Create Magisk Installer Script
           echo "#!/sbin/sh" > ytm-magisk/META-INF/com/google/android/update-binary
           echo "#MAGISK" >> ytm-magisk/META-INF/com/google/android/update-binary
           chmod +x ytm-magisk/META-INF/com/google/android/update-binary
           touch ytm-magisk/META-INF/com/google/android/updater-script
           
-          # Copy APK and Create module.prop
-          cp YTMusic-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
+          cp YTMusic-PitchBlack-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
           cat <<EOF > ytm-magisk/module.prop
-          id=morphe-ytmusic
-          name=YT Music Morphe (Root)
+          id=morphe-ytmusic-black
+          name=YT Music Morphe (Pitch Black Root)
           version=v1.0
           versionCode=1
           author=MorpheApp Builder
-          description=Systemless Morphe Patched YouTube Music module.
+          description=Systemless Morphe Patched YouTube Music module with AMOLED Pitch Black theme.
           EOF
           
-          cd ytm-magisk && zip -r9 ../YTMusic-Morphe-Magisk.zip . && cd ..
+          cd ytm-magisk && zip -r9 ../YTMusic-PitchBlack-Magisk.zip . && cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "v1.0.${{ github.run_number }}"
-          name: "Morphe Patched Builds #${{ github.run_number }}"
+          name: "Morphe Patched Builds (Pitch Black) #${{ github.run_number }}"
           files: |
-            YouTube-Morphe-NonRoot.apk
-            YTMusic-Morphe-NonRoot.apk
-            YouTube-Morphe-Magisk.zip
-            YTMusic-Morphe-Magisk.zip
+            YouTube-PitchBlack-NonRoot.apk
+            YTMusic-PitchBlack-NonRoot.apk
+            YouTube-PitchBlack-Magisk.zip
+            YTMusic-PitchBlack-Magisk.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
