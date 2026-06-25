@@ -21,7 +21,6 @@ jobs:
         run: |
           mkdir -p tools
           
-          # GitHub API se automatically latest CLI ka link fetch karna
           echo "Fetching latest Morphe CLI..."
           CLI_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-cli/releases/latest | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
           CLI_FILENAME=$(basename "$CLI_URL")
@@ -29,7 +28,6 @@ jobs:
           echo "Downloading CLI from: $CLI_URL"
           wget -qO tools/cli.jar "$CLI_URL"
           
-          # GitHub API se automatically latest Patches ka link fetch karna
           echo "Fetching latest Morphe Patches..."
           PATCHES_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep "browser_download_url" | grep -E "\.jar|\.rvp|\.mpp" | cut -d '"' -f 4 | head -n 1)
           PATCH_FILENAME=$(basename "$PATCHES_URL")
@@ -40,45 +38,110 @@ jobs:
           
           if [ ! -s tools/cli.jar ]; then echo "CLI download failed!"; exit 1; fi
 
-      - name: Download Original APKs
+      - name: Download Original APKs (Multi-Source Fallback)
         run: |
           mkdir -p apks
           
-          # Folder structure restrictions removed to prevent 'Not Found' errors
+          # YouTube & YT Music ke liye Smart Function
+          download_apk() {
+            local APP_NAME=$1
+            local PKG_NAME=$2
+            local OUT_FILE=$3
+            local FOUND=false
+            
+            echo "--- Scanning for $APP_NAME APK ---"
+            echo "Trying Source 1 (Archive.org)..."
+            APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep -i "$PKG_NAME" | grep "\.apk$" | sort | tail -n 1)
+            
+            if [ -n "$APK_PATH" ]; then
+                APK_NAME_EXTRACTED=$(basename "$APK_PATH")
+                echo "Found at Source 1: $APK_NAME_EXTRACTED"
+                wget -qO "$OUT_FILE" "https://archive.org/download/jhc-apks/$APK_PATH"
+                if [ -s "$OUT_FILE" ]; then FOUND=true; fi
+            fi
+            
+            if [ "$FOUND" = false ]; then
+                echo "Source 1 Failed. Trying Source 2 (GitHub Alternative Mirror)..."
+                APK_URL=$(curl -s https://api.github.com/repos/j-hc/revanced-apks/releases/latest | grep "browser_download_url" | grep -i "$APP_NAME" | grep "\.apk" | cut -d '"' -f 4 | head -n 1)
+                if [ -n "$APK_URL" ]; then
+                    APK_NAME_EXTRACTED=$(basename "$APK_URL")
+                    echo "Found at Source 2: $APK_NAME_EXTRACTED"
+                    wget -qO "$OUT_FILE" "$APK_URL"
+                    if [ -s "$OUT_FILE" ]; then FOUND=true; fi
+                fi
+            fi
+            
+            if [ "$FOUND" = true ]; then
+                echo "${APP_NAME}_CLEAN_NAME=${APK_NAME_EXTRACTED%.apk}" >> $GITHUB_ENV
+            else
+                echo "${APP_NAME}_CLEAN_NAME=Not_Found" >> $GITHUB_ENV
+            fi
+          }
           
-          # 1. Auto-fetch YouTube APK
-          echo "Scanning for YouTube APK via API..."
-          YT_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep -i "com.google.android.youtube" | grep "\.apk$" | sort | tail -n 1)
-          if [ -z "$YT_APK_PATH" ]; then echo "Failed to find YouTube APK!"; exit 1; fi
-          YT_APK=$(basename "$YT_APK_PATH")
-          echo "Downloading $YT_APK"
-          wget -qO apks/youtube.apk "https://archive.org/download/jhc-apks/$YT_APK_PATH"
+          download_apk "YT" "com.google.android.youtube" "apks/youtube.apk"
+          download_apk "YTM" "com.google.android.apps.youtube.music" "apks/ytmusic.apk"
           
-          # 2. Auto-fetch YT Music APK
-          echo "Scanning for YT Music APK via API..."
-          YTM_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep -i "com.google.android.apps.youtube.music" | grep "\.apk$" | sort | tail -n 1)
-          if [ -z "$YTM_APK_PATH" ]; then echo "Failed to find YT Music APK!"; exit 1; fi
-          YTM_APK=$(basename "$YTM_APK_PATH")
-          echo "Downloading $YTM_APK"
-          wget -qO apks/ytmusic.apk "https://archive.org/download/jhc-apks/$YTM_APK_PATH"
+          # 3. REDDIT EXPERIMENTAL TEST (User provided URLs)
+          echo "--- Testing Reddit Custom Sources ---"
+          REDDIT_OUT="apks/reddit.apk"
+          REDDIT_FOUND=false
+
+          # Source A: Archive.org (User URL)
+          echo "Trying Source A (Archive.org)..."
+          REDDIT_ARCH_URL="https://archive.org/download/jhc-apks/apks/com.reddit.frontpage"
+          REDDIT_HREF=$(curl -sL "$REDDIT_ARCH_URL/" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1 || true)
           
-          # 3. Auto-fetch Reddit APK (Safe Mode)
-          echo "Scanning for Reddit APK via API..."
-          REDDIT_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep -i "com.reddit.frontpage" | grep "\.apk$" | sort | tail -n 1)
-          
-          if [ -z "$REDDIT_APK_PATH" ]; then 
-              echo "WARNING: Reddit APK missing from archive. Skipping Reddit."
-              REDDIT_APK="Not_Found"
+          if [ -n "$REDDIT_HREF" ]; then
+              echo "Downloading from Archive: $REDDIT_ARCH_URL/$REDDIT_HREF"
+              wget -qO "$REDDIT_OUT" "$REDDIT_ARCH_URL/$REDDIT_HREF"
+              if [ -f "$REDDIT_OUT" ] && [ $(stat -c%s "$REDDIT_OUT") -gt 10000000 ]; then
+                  echo "Success from Archive.org!"
+                  REDDIT_FOUND=true
+                  echo "REDDIT_CLEAN_NAME=${REDDIT_HREF%.apk}" >> $GITHUB_ENV
+              else
+                  echo "Archive file invalid/empty. Size: $(stat -c%s "$REDDIT_OUT" 2>/dev/null || echo "0") bytes. Deleting."
+                  rm -f "$REDDIT_OUT"
+              fi
           else
-              REDDIT_APK=$(basename "$REDDIT_APK_PATH")
-              echo "Downloading $REDDIT_APK"
-              wget -qO apks/reddit.apk "https://archive.org/download/jhc-apks/$REDDIT_APK_PATH"
+             echo "No APK found at Archive URL (Folder might be empty/deleted)."
           fi
-          
-          # Release notes ke liye APK ke naam save karna
-          echo "YT_APK_NAME=$YT_APK" >> $GITHUB_ENV
-          echo "YTM_APK_NAME=$YTM_APK" >> $GITHUB_ENV
-          echo "REDDIT_APK_NAME=$REDDIT_APK" >> $GITHUB_ENV
+
+          # Source B: Uptodown (User URL)
+          if [ "$REDDIT_FOUND" = false ]; then
+              echo "Trying Source B (Uptodown)..."
+              UPTODOWN_URL="https://reddit-official-app.en.uptodown.com/android"
+              echo "Downloading from Uptodown: $UPTODOWN_URL"
+              wget -qO "$REDDIT_OUT" "$UPTODOWN_URL" || true
+              if [ -f "$REDDIT_OUT" ] && [ $(stat -c%s "$REDDIT_OUT") -gt 10000000 ]; then
+                  echo "Success from Uptodown!"
+                  REDDIT_FOUND=true
+                  echo "REDDIT_CLEAN_NAME=Reddit-Uptodown" >> $GITHUB_ENV
+              else
+                  echo "Uptodown failed (Bot Protection): Downloaded HTML instead of APK. Size: $(stat -c%s "$REDDIT_OUT" 2>/dev/null || echo "0") bytes. Deleting."
+                  rm -f "$REDDIT_OUT"
+              fi
+          fi
+
+          # Source C: APKMirror (User URL)
+          if [ "$REDDIT_FOUND" = false ]; then
+              echo "Trying Source C (APKMirror)..."
+              APKMIRROR_URL="https://www.apkmirror.com/apk/redditinc/reddit/"
+              echo "Downloading from APKMirror: $APKMIRROR_URL"
+              wget -qO "$REDDIT_OUT" "$APKMIRROR_URL" || true
+              if [ -f "$REDDIT_OUT" ] && [ $(stat -c%s "$REDDIT_OUT") -gt 10000000 ]; then
+                  echo "Success from APKMirror!"
+                  REDDIT_FOUND=true
+                  echo "REDDIT_CLEAN_NAME=Reddit-APKMirror" >> $GITHUB_ENV
+              else
+                  echo "APKMirror failed (Cloudflare): Downloaded HTML instead of APK. Size: $(stat -c%s "$REDDIT_OUT" 2>/dev/null || echo "0") bytes. Deleting."
+                  rm -f "$REDDIT_OUT"
+              fi
+          fi
+
+          if [ "$REDDIT_FOUND" = false ]; then
+              echo "WARNING: Reddit APK could not be downloaded from ANY of the provided sources! Skipping Reddit."
+              echo "REDDIT_CLEAN_NAME=Not_Found" >> $GITHUB_ENV
+          fi
           
       - name: Verify APK Downloads
         run: |
@@ -87,10 +150,9 @@ jobs:
           if [ ! -s apks/youtube.apk ] || [ $(stat -c%s "apks/youtube.apk") -lt 10000000 ]; then echo "YouTube APK download failed or is invalid!"; exit 1; fi
           if [ ! -s apks/ytmusic.apk ] || [ $(stat -c%s "apks/ytmusic.apk") -lt 10000000 ]; then echo "YT Music APK download failed or is invalid!"; exit 1; fi
           
-          # Reddit ki verification ko safe banaya gaya hai
           if [ -f apks/reddit.apk ]; then
             if [ ! -s apks/reddit.apk ] || [ $(stat -c%s "apks/reddit.apk") -lt 10000000 ]; then 
-              echo "Reddit APK is invalid! Removing it so build can continue safely."
+              echo "Reddit APK is invalid! Removing it."
               rm apks/reddit.apk
             fi
           fi
@@ -100,7 +162,6 @@ jobs:
           java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-PitchBlack-NonRoot.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-PitchBlack-NonRoot.apk apks/ytmusic.apk
           
-          # Sirf tabhi patch karega jab Reddit APK safely download hua ho
           if [ -f apks/reddit.apk ]; then
             java -jar tools/cli.jar patch -p tools/patches.* -o Reddit-Morphe-NonRoot.apk apks/reddit.apk
           fi
@@ -109,7 +170,6 @@ jobs:
         run: |
           java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-PitchBlack-Root.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-PitchBlack-Root.apk apks/ytmusic.apk
-          # Reddit ke liye root variant skip kiya gaya hai jaisa aapne pucha tha
 
       - name: Create Magisk Modules Native
         run: |
@@ -157,12 +217,8 @@ jobs:
 
       - name: Generate Release Notes
         run: |
-          YT_CLEAN_NAME=${YT_APK_NAME%.apk}
-          YTM_CLEAN_NAME=${YTM_APK_NAME%.apk}
-          REDDIT_CLEAN_NAME=${REDDIT_APK_NAME%.apk}
-          
           if [ "$REDDIT_CLEAN_NAME" == "Not_Found" ]; then
-            REDDIT_TEXT="Skipped (Not available in archive)"
+            REDDIT_TEXT="Skipped (Not available in archive or blocked by other sites)"
           else
             REDDIT_TEXT="$REDDIT_CLEAN_NAME"
           fi
