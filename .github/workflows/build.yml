@@ -1,7 +1,7 @@
 name: Build Morphe APKs and Magisk Modules
 
 on:
-  workflow_dispatch: # Ye aapko manually build run karne ka option dega
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,241 +21,53 @@ jobs:
         run: |
           mkdir -p tools
           
-          echo "Fetching latest Morphe CLI..."
+          # 1. CLI Download
           CLI_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-cli/releases/latest | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
-          CLI_FILENAME=$(basename "$CLI_URL")
-          echo "CLI_FILENAME=$CLI_FILENAME" >> $GITHUB_ENV
-          echo "Downloading CLI from: $CLI_URL"
           wget -qO tools/cli.jar "$CLI_URL"
           
-          echo "Fetching latest Morphe Patches..."
-          PATCHES_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep "browser_download_url" | grep -E "\.jar|\.rvp|\.mpp" | cut -d '"' -f 4 | head -n 1)
-          PATCH_FILENAME=$(basename "$PATCHES_URL")
-          echo "PATCH_FILENAME=$PATCH_FILENAME" >> $GITHUB_ENV
-          PATCH_EXT="${PATCHES_URL##*.}"
-          echo "Downloading Patches from: $PATCHES_URL"
-          wget -qO "tools/patches.$PATCH_EXT" "$PATCHES_URL"
+          # 2. Patches Download (Strictly .jar ya .rvp extension check)
+          echo "Downloading Patches..."
+          PATCHES_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep "browser_download_url" | grep -E "\.jar|\.rvp" | cut -d '"' -f 4 | head -n 1)
+          wget -qO tools/patches.jar "$PATCHES_URL"
           
-          if [ ! -s tools/cli.jar ]; then echo "CLI download failed!"; exit 1; fi
+          # Verification
+          if [ ! -s tools/cli.jar ] || [ ! -s tools/patches.jar ]; then 
+            echo "Error: Tools download failed or file empty!"; exit 1; 
+          fi
+          echo "Tools verified."
 
-      - name: Download Original APKs (Multi-Source Fallback)
+      - name: Download Original APKs
         run: |
           mkdir -p apks
+          # Archive.org se direct download
+          curl -s "https://archive.org/download/jhc-apks/apks/com.google.android.youtube/youtube_v19.16.39.apk" -o apks/youtube.apk
+          curl -s "https://archive.org/download/jhc-apks/apks/com.google.android.apps.youtube.music/ytmusic_v7.05.51.apk" -o apks/ytmusic.apk
           
-          # YouTube & YT Music ke liye Smart Function
-          download_apk() {
-            local APP_NAME=$1
-            local PKG_NAME=$2
-            local OUT_FILE=$3
-            local FOUND=false
-            
-            echo "--- Scanning for $APP_NAME APK ---"
-            echo "Trying Source 1 (Archive.org)..."
-            APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep -i "$PKG_NAME" | grep "\.apk$" | sort | tail -n 1)
-            
-            if [ -n "$APK_PATH" ]; then
-                APK_NAME_EXTRACTED=$(basename "$APK_PATH")
-                echo "Found at Source 1: $APK_NAME_EXTRACTED"
-                wget -qO "$OUT_FILE" "https://archive.org/download/jhc-apks/$APK_PATH"
-                if [ -s "$OUT_FILE" ]; then FOUND=true; fi
-            fi
-            
-            if [ "$FOUND" = false ]; then
-                echo "Source 1 Failed. Trying Source 2 (GitHub Alternative Mirror)..."
-                APK_URL=$(curl -s https://api.github.com/repos/j-hc/revanced-apks/releases/latest | grep "browser_download_url" | grep -i "$APP_NAME" | grep "\.apk" | cut -d '"' -f 4 | head -n 1)
-                if [ -n "$APK_URL" ]; then
-                    APK_NAME_EXTRACTED=$(basename "$APK_URL")
-                    echo "Found at Source 2: $APK_NAME_EXTRACTED"
-                    wget -qO "$OUT_FILE" "$APK_URL"
-                    if [ -s "$OUT_FILE" ]; then FOUND=true; fi
-                fi
-            fi
-            
-            if [ "$FOUND" = true ]; then
-                echo "${APP_NAME}_CLEAN_NAME=${APK_NAME_EXTRACTED%.apk}" >> $GITHUB_ENV
-            else
-                echo "${APP_NAME}_CLEAN_NAME=Not_Found" >> $GITHUB_ENV
-            fi
-          }
-          
-          download_apk "YT" "com.google.android.youtube" "apks/youtube.apk"
-          download_apk "YTM" "com.google.android.apps.youtube.music" "apks/ytmusic.apk"
-          
-          # 3. REDDIT EXPERIMENTAL TEST (User provided URLs)
-          echo "--- Testing Reddit Custom Sources ---"
-          REDDIT_OUT="apks/reddit.apk"
-          REDDIT_FOUND=false
-
-          # Source A: Archive.org (User URL)
-          echo "Trying Source A (Archive.org)..."
-          REDDIT_ARCH_URL="https://archive.org/download/jhc-apks/apks/com.reddit.frontpage"
-          REDDIT_HREF=$(curl -sL "$REDDIT_ARCH_URL/" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1 || true)
-          
-          if [ -n "$REDDIT_HREF" ]; then
-              echo "Downloading from Archive: $REDDIT_ARCH_URL/$REDDIT_HREF"
-              wget -qO "$REDDIT_OUT" "$REDDIT_ARCH_URL/$REDDIT_HREF"
-              if [ -f "$REDDIT_OUT" ] && [ $(stat -c%s "$REDDIT_OUT") -gt 10000000 ]; then
-                  echo "Success from Archive.org!"
-                  REDDIT_FOUND=true
-                  echo "REDDIT_CLEAN_NAME=${REDDIT_HREF%.apk}" >> $GITHUB_ENV
-              else
-                  echo "Archive file invalid/empty. Size: $(stat -c%s "$REDDIT_OUT" 2>/dev/null || echo "0") bytes. Deleting."
-                  rm -f "$REDDIT_OUT"
-              fi
-          else
-             echo "No APK found at Archive URL (Folder might be empty/deleted)."
-          fi
-
-          # Source B: Uptodown (User URL)
-          if [ "$REDDIT_FOUND" = false ]; then
-              echo "Trying Source B (Uptodown)..."
-              UPTODOWN_URL="https://reddit-official-app.en.uptodown.com/android"
-              echo "Downloading from Uptodown: $UPTODOWN_URL"
-              wget -qO "$REDDIT_OUT" "$UPTODOWN_URL" || true
-              if [ -f "$REDDIT_OUT" ] && [ $(stat -c%s "$REDDIT_OUT") -gt 10000000 ]; then
-                  echo "Success from Uptodown!"
-                  REDDIT_FOUND=true
-                  echo "REDDIT_CLEAN_NAME=Reddit-Uptodown" >> $GITHUB_ENV
-              else
-                  echo "Uptodown failed (Bot Protection): Downloaded HTML instead of APK. Size: $(stat -c%s "$REDDIT_OUT" 2>/dev/null || echo "0") bytes. Deleting."
-                  rm -f "$REDDIT_OUT"
-              fi
-          fi
-
-          # Source C: APKMirror (User URL)
-          if [ "$REDDIT_FOUND" = false ]; then
-              echo "Trying Source C (APKMirror)..."
-              APKMIRROR_URL="https://www.apkmirror.com/apk/redditinc/reddit/"
-              echo "Downloading from APKMirror: $APKMIRROR_URL"
-              wget -qO "$REDDIT_OUT" "$APKMIRROR_URL" || true
-              if [ -f "$REDDIT_OUT" ] && [ $(stat -c%s "$REDDIT_OUT") -gt 10000000 ]; then
-                  echo "Success from APKMirror!"
-                  REDDIT_FOUND=true
-                  echo "REDDIT_CLEAN_NAME=Reddit-APKMirror" >> $GITHUB_ENV
-              else
-                  echo "APKMirror failed (Cloudflare): Downloaded HTML instead of APK. Size: $(stat -c%s "$REDDIT_OUT" 2>/dev/null || echo "0") bytes. Deleting."
-                  rm -f "$REDDIT_OUT"
-              fi
-          fi
-
-          if [ "$REDDIT_FOUND" = false ]; then
-              echo "WARNING: Reddit APK could not be downloaded from ANY of the provided sources! Skipping Reddit."
-              echo "REDDIT_CLEAN_NAME=Not_Found" >> $GITHUB_ENV
-          fi
-          
-      - name: Verify APK Downloads
+      - name: Build Non-Root APKs
         run: |
-          echo "Checking downloaded APK sizes..."
-          ls -lh apks/
-          if [ ! -s apks/youtube.apk ] || [ $(stat -c%s "apks/youtube.apk") -lt 10000000 ]; then echo "YouTube APK download failed or is invalid!"; exit 1; fi
-          if [ ! -s apks/ytmusic.apk ] || [ $(stat -c%s "apks/ytmusic.apk") -lt 10000000 ]; then echo "YT Music APK download failed or is invalid!"; exit 1; fi
-          
-          if [ -f apks/reddit.apk ]; then
-            if [ ! -s apks/reddit.apk ] || [ $(stat -c%s "apks/reddit.apk") -lt 10000000 ]; then 
-              echo "Reddit APK is invalid! Removing it."
-              rm apks/reddit.apk
-            fi
-          fi
-
-      - name: Build Non-Root APKs (Standard)
-        run: |
-          java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-PitchBlack-NonRoot.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-PitchBlack-NonRoot.apk apks/ytmusic.apk
-          
-          if [ -f apks/reddit.apk ]; then
-            java -jar tools/cli.jar patch -p tools/patches.* -o Reddit-Morphe-NonRoot.apk apks/reddit.apk
-          fi
+          # Patching process (Explicitly using tools/patches.jar)
+          java -jar tools/cli.jar patch -p tools/patches.jar -o YouTube-NonRoot.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.jar -o YTMusic-NonRoot.apk apks/ytmusic.apk
 
       - name: Build Root APKs (For Magisk)
         run: |
-          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-PitchBlack-Root.apk apks/youtube.apk
-          java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-PitchBlack-Root.apk apks/ytmusic.apk
+          # Patching with GmsCore Exclude
+          java -jar tools/cli.jar patch -p tools/patches.jar -e "GmsCore support" -o YouTube-Root.apk apks/youtube.apk
+          java -jar tools/cli.jar patch -p tools/patches.jar -e "GmsCore support" -o YTMusic-Root.apk apks/ytmusic.apk
 
-      - name: Create Magisk Modules Native
+      - name: Create Magisk Modules
         run: |
-          # --- YouTube Magisk Module ---
-          mkdir -p yt-magisk/META-INF/com/google/android
-          mkdir -p yt-magisk/system/product/app/YouTube
-          
-          echo "#!/sbin/sh" > yt-magisk/META-INF/com/google/android/update-binary
-          echo "#MAGISK" >> yt-magisk/META-INF/com/google/android/update-binary
-          chmod +x yt-magisk/META-INF/com/google/android/update-binary
-          touch yt-magisk/META-INF/com/google/android/updater-script
-          
-          cp YouTube-PitchBlack-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
-          cat <<EOF > yt-magisk/module.prop
-          id=morphe-youtube-black
-          name=YouTube Morphe (Pitch Black Root)
-          version=v1.0
-          versionCode=1
-          author=MorpheApp Builder
-          description=Systemless Morphe Patched YouTube module with AMOLED Pitch Black theme.
-          EOF
-          
-          cd yt-magisk && zip -r9 ../YouTube-PitchBlack-Magisk.zip . && cd ..
-
-          # --- YT Music Magisk Module ---
-          mkdir -p ytm-magisk/META-INF/com/google/android
-          mkdir -p ytm-magisk/system/product/app/YTMusic
-          
-          echo "#!/sbin/sh" > ytm-magisk/META-INF/com/google/android/update-binary
-          echo "#MAGISK" >> ytm-magisk/META-INF/com/google/android/update-binary
-          chmod +x ytm-magisk/META-INF/com/google/android/update-binary
-          touch ytm-magisk/META-INF/com/google/android/updater-script
-          
-          cp YTMusic-PitchBlack-Root.apk ytm-magisk/system/product/app/YTMusic/YTMusic.apk
-          cat <<EOF > ytm-magisk/module.prop
-          id=morphe-ytmusic-black
-          name=YT Music Morphe (Pitch Black Root)
-          version=v1.0
-          versionCode=1
-          author=MorpheApp Builder
-          description=Systemless Morphe Patched YouTube Music module with AMOLED Pitch Black theme.
-          EOF
-          
-          cd ytm-magisk && zip -r9 ../YTMusic-PitchBlack-Magisk.zip . && cd ..
-
-      - name: Generate Release Notes
-        run: |
-          if [ "$REDDIT_CLEAN_NAME" == "Not_Found" ]; then
-            REDDIT_TEXT="Skipped (Not available in archive or blocked by other sites)"
-          else
-            REDDIT_TEXT="$REDDIT_CLEAN_NAME"
-          fi
-          
-          cat <<EOF > release_notes.txt
-          🚀 **New Morphe Build**
-          
-          📱 **YouTube:** $YT_CLEAN_NAME
-          🎵 **YouTube Music:** $YTM_CLEAN_NAME
-          🤖 **Reddit:** $REDDIT_TEXT
-          
-          ---
-          
-          ### 📌 Required Add-ons
-          * **Install MicroG-RE:** [MicroG-RE Releases](https://github.com/morpheapp/MicroG-RE/releases) 
-            *(for non-root YouTube and YT Music APKs)*
-          * **Use Zygisk-Detach:** [Zygisk-Detach Releases](https://github.com/j-hc/zygisk-detach) 
-            *(to detach root Morphe YouTube and YT Music from Play Store)*
-          
-          ---
-          
-          ### 🛠️ Build Tools Used
-          * **CLI:** MorpheApp/$CLI_FILENAME
-          * **Patches:** MorpheApp/$PATCH_FILENAME
-          
-          ### 📝 Changelog
-          * Check the official patches changelog here: [Morphe Patches Latest Release](https://github.com/MorpheApp/morphe-patches/releases/latest)
-          EOF
+          # Simple folder structure for Magisk
+          mkdir -p yt-magisk/system/product/app/YouTube && cp YouTube-Root.apk yt-magisk/system/product/app/YouTube/YouTube.apk
+          echo -e "id=morphe.yt\nname=YouTube Morphe\nversion=1.0\nauthor=Builder" > yt-magisk/module.prop
+          cd yt-magisk && zip -r9 ../YouTube-Magisk.zip . && cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "v1.0.${{ github.run_number }}"
-          name: "Morphe Patched Builds (Pitch Black) #${{ github.run_number }}"
-          body_path: release_notes.txt
           files: |
-            *NonRoot.apk
-            *Magisk.zip
+            *.apk
+            *.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
