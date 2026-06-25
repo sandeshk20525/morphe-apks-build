@@ -44,26 +44,31 @@ jobs:
         run: |
           mkdir -p apks
           
-          # 1. Auto-fetch YouTube APK from Archive.org
-          echo "Scanning for YouTube APK..."
-          YT_BASE="https://archive.org/download/jhc-apks/apks/com.google.android.youtube/"
-          YT_APK=$(curl -s "$YT_BASE" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1)
+          # HTML Scraping hatakar Archive.org ki official Metadata API (jq) ka use kiya gaya hai taaki 404 error na aaye.
+          
+          # 1. Auto-fetch YouTube APK
+          echo "Scanning for YouTube APK via API..."
+          YT_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep "apks/com.google.android.youtube/.*\.apk$" | sort | tail -n 1)
+          if [ -z "$YT_APK_PATH" ]; then echo "Failed to find YouTube APK!"; exit 1; fi
+          YT_APK=$(basename "$YT_APK_PATH")
           echo "Downloading $YT_APK"
-          wget -O apks/youtube.apk "${YT_BASE}${YT_APK}"
+          wget -qO apks/youtube.apk "https://archive.org/download/jhc-apks/$YT_APK_PATH"
           
-          # 2. Auto-fetch YT Music APK from Archive.org
-          echo "Scanning for YT Music APK..."
-          YTM_BASE="https://archive.org/download/jhc-apks/apks/com.google.android.apps.youtube.music/"
-          YTM_APK=$(curl -s "$YTM_BASE" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1)
+          # 2. Auto-fetch YT Music APK
+          echo "Scanning for YT Music APK via API..."
+          YTM_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep "apks/com.google.android.apps.youtube.music/.*\.apk$" | sort | tail -n 1)
+          if [ -z "$YTM_APK_PATH" ]; then echo "Failed to find YT Music APK!"; exit 1; fi
+          YTM_APK=$(basename "$YTM_APK_PATH")
           echo "Downloading $YTM_APK"
-          wget -O apks/ytmusic.apk "${YTM_BASE}${YTM_APK}"
+          wget -qO apks/ytmusic.apk "https://archive.org/download/jhc-apks/$YTM_APK_PATH"
           
-          # 3. Auto-fetch Reddit APK from Archive.org (Sirf APK ke liye)
-          echo "Scanning for Reddit APK..."
-          REDDIT_BASE="https://archive.org/download/jhc-apks/apks/com.reddit.frontpage/"
-          REDDIT_APK=$(curl -s "$REDDIT_BASE" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1)
+          # 3. Auto-fetch Reddit APK
+          echo "Scanning for Reddit APK via API..."
+          REDDIT_APK_PATH=$(curl -s "https://archive.org/metadata/jhc-apks" | jq -r '.files[].name' | grep "apks/com.reddit.frontpage/.*\.apk$" | sort | tail -n 1)
+          if [ -z "$REDDIT_APK_PATH" ]; then echo "Failed to find Reddit APK!"; exit 1; fi
+          REDDIT_APK=$(basename "$REDDIT_APK_PATH")
           echo "Downloading $REDDIT_APK"
-          wget -O apks/reddit.apk "${REDDIT_BASE}${REDDIT_APK}"
+          wget -qO apks/reddit.apk "https://archive.org/download/jhc-apks/$REDDIT_APK_PATH"
           
           # Release notes ke liye APK ke naam save karna
           echo "YT_APK_NAME=$YT_APK" >> $GITHUB_ENV
