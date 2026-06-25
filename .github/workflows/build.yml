@@ -24,12 +24,16 @@ jobs:
           # GitHub API se automatically latest CLI ka link fetch karna
           echo "Fetching latest Morphe CLI..."
           CLI_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-cli/releases/latest | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
+          CLI_FILENAME=$(basename "$CLI_URL")
+          echo "CLI_FILENAME=$CLI_FILENAME" >> $GITHUB_ENV
           echo "Downloading CLI from: $CLI_URL"
           wget -qO tools/cli.jar "$CLI_URL"
           
           # GitHub API se automatically latest Patches ka link fetch karna
           echo "Fetching latest Morphe Patches..."
           PATCHES_URL=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep "browser_download_url" | grep -E "\.jar|\.rvp|\.mpp" | cut -d '"' -f 4 | head -n 1)
+          PATCH_FILENAME=$(basename "$PATCHES_URL")
+          echo "PATCH_FILENAME=$PATCH_FILENAME" >> $GITHUB_ENV
           PATCH_EXT="${PATCHES_URL##*.}"
           echo "Downloading Patches from: $PATCHES_URL"
           wget -qO "tools/patches.$PATCH_EXT" "$PATCHES_URL"
@@ -121,10 +125,6 @@ jobs:
 
       - name: Generate Release Notes
         run: |
-          # GitHub API se CLI aur Patches ka exact version number nikalna
-          CLI_VER=$(curl -s https://api.github.com/repos/MorpheApp/morphe-cli/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          PATCH_VER=$(curl -s https://api.github.com/repos/MorpheApp/morphe-patches/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          
           # APK naam me se '.apk' hatakar version aur architecture (jaise v19.16.39-arm64-v8a) nikalna
           YT_CLEAN_NAME=${YT_APK_NAME%.apk}
           YTM_CLEAN_NAME=${YTM_APK_NAME%.apk}
@@ -139,16 +139,16 @@ jobs:
           ---
           
           ### 📌 Required Add-ons
-          * **Install MicroG:** [GmsCore Releases](https://github.com/ReVanced/GmsCore/releases) 
-            *(Required for non-root YouTube and YT Music APK to sign in)*
+          * **Install MicroG-RE:** [MicroG-RE Releases](https://github.com/morpheapp/MicroG-RE/releases) 
+            *(for non-root YouTube and YT Music APKs)*
           * **Use Zygisk-Detach:** [Zygisk-Detach Releases](https://github.com/j-hc/zygisk-detach) 
-            *(Use this to detach YouTube and YT Music modules from the Play Store)*
+            *(to detach root Morphe YouTube and YT Music from Play Store)*
           
           ---
           
-          ### 🛠️ Build Tools
-          * **CLI Version:** $CLI_VER
-          * **Patches Version:** $PATCH_VER
+          ### 🛠️ Build Tools Used
+          * **CLI:** MorpheApp/$CLI_FILENAME
+          * **Patches:** MorpheApp/$PATCH_FILENAME
           
           ### 📝 Changelog
           * Check the official patches changelog here: [Morphe Patches Latest Release](https://github.com/MorpheApp/morphe-patches/releases/latest)
