@@ -58,9 +58,17 @@ jobs:
           echo "Downloading $YTM_APK"
           wget -O apks/ytmusic.apk "${YTM_BASE}${YTM_APK}"
           
-          # NAYA CODE: Release notes ke liye APK ka naam environment variable me save karna
+          # 3. Auto-fetch Reddit APK from Archive.org (Sirf APK ke liye)
+          echo "Scanning for Reddit APK..."
+          REDDIT_BASE="https://archive.org/download/jhc-apks/apks/com.reddit.frontpage/"
+          REDDIT_APK=$(curl -s "$REDDIT_BASE" | grep -oP 'href="\K[^"]+\.apk' | sort | tail -n 1)
+          echo "Downloading $REDDIT_APK"
+          wget -O apks/reddit.apk "${REDDIT_BASE}${REDDIT_APK}"
+          
+          # Release notes ke liye APK ke naam save karna
           echo "YT_APK_NAME=$YT_APK" >> $GITHUB_ENV
           echo "YTM_APK_NAME=$YTM_APK" >> $GITHUB_ENV
+          echo "REDDIT_APK_NAME=$REDDIT_APK" >> $GITHUB_ENV
           
       - name: Verify APK Downloads
         run: |
@@ -68,16 +76,19 @@ jobs:
           ls -lh apks/
           if [ ! -s apks/youtube.apk ] || [ $(stat -c%s "apks/youtube.apk") -lt 10000000 ]; then echo "YouTube APK download failed or is invalid!"; exit 1; fi
           if [ ! -s apks/ytmusic.apk ] || [ $(stat -c%s "apks/ytmusic.apk") -lt 10000000 ]; then echo "YT Music APK download failed or is invalid!"; exit 1; fi
+          if [ ! -s apks/reddit.apk ] || [ $(stat -c%s "apks/reddit.apk") -lt 10000000 ]; then echo "Reddit APK download failed or is invalid!"; exit 1; fi
 
       - name: Build Non-Root APKs (Standard)
         run: |
           java -jar tools/cli.jar patch -p tools/patches.* -o YouTube-PitchBlack-NonRoot.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.* -o YTMusic-PitchBlack-NonRoot.apk apks/ytmusic.apk
+          java -jar tools/cli.jar patch -p tools/patches.* -o Reddit-Morphe-NonRoot.apk apks/reddit.apk
 
       - name: Build Root APKs (For Magisk)
         run: |
           java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YouTube-PitchBlack-Root.apk apks/youtube.apk
           java -jar tools/cli.jar patch -p tools/patches.* -e "GmsCore support" -o YTMusic-PitchBlack-Root.apk apks/ytmusic.apk
+          # Reddit ke liye root variant skip kiya gaya hai jaisa aapne pucha tha
 
       - name: Create Magisk Modules Native
         run: |
@@ -125,16 +136,16 @@ jobs:
 
       - name: Generate Release Notes
         run: |
-          # APK naam me se '.apk' hatakar version aur architecture (jaise v19.16.39-arm64-v8a) nikalna
           YT_CLEAN_NAME=${YT_APK_NAME%.apk}
           YTM_CLEAN_NAME=${YTM_APK_NAME%.apk}
+          REDDIT_CLEAN_NAME=${REDDIT_APK_NAME%.apk}
           
-          # Description file generate karna
           cat <<EOF > release_notes.txt
           🚀 **New Morphe Build**
           
           📱 **YouTube:** $YT_CLEAN_NAME
           🎵 **YouTube Music:** $YTM_CLEAN_NAME
+          🤖 **Reddit:** $REDDIT_CLEAN_NAME
           
           ---
           
@@ -163,6 +174,7 @@ jobs:
           files: |
             YouTube-PitchBlack-NonRoot.apk
             YTMusic-PitchBlack-NonRoot.apk
+            Reddit-Morphe-NonRoot.apk
             YouTube-PitchBlack-Magisk.zip
             YTMusic-PitchBlack-Magisk.zip
         env:
